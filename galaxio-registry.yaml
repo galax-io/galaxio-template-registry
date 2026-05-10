@@ -1,5 +1,6 @@
 apiVersion: galaxio.io/v1
 kind: TemplateRegistry
+version: 1.0.0
 packs:
   - name: gatling
     source: github:galax-io/templates-gatling

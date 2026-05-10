@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y shellcheck
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.8
+
+      - name: Run shellcheck
+        run: shellcheck .github/scripts/*.sh
+
+      - name: Run actionlint
+        run: |
+          "$(go env GOPATH)/bin/actionlint" -color
+
+      - name: Validate YAML syntax
+        run: |
+          find . -not -path './.git/*' \( -name '*.yaml' -o -name '*.yml' \) \
+            -exec python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" {} \;
+          echo "All YAML files are valid."
+
+  versioning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test registry version bump checker
+        run: bash .github/scripts/check-registry-version-bump_test.sh
+
+      - name: Check registry version bump
+        if: github.event_name == 'pull_request'
+        run: bash .github/scripts/check-registry-version-bump.sh
