@@ -68,3 +68,16 @@ jobs:
       - name: Check registry version bump
         if: github.event_name == 'pull_request'
         run: bash .github/scripts/check-registry-version-bump.sh
+
+  integration:
+    name: integration resolution check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify registry entries resolve against real packs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/check-registry-resolution.sh
