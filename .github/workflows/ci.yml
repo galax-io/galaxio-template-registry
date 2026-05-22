@@ -77,7 +77,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Install yq
+        run: go install github.com/mikefarah/yq/v4@latest
+
+      - name: Install galaxio CLI
+        run: go install github.com/galax-io/galaxio-cli/cmd/galaxio@latest
+
       - name: Verify registry entries resolve against real packs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GALAXIO_BIN: galaxio
         run: bash .github/scripts/check-registry-resolution.sh

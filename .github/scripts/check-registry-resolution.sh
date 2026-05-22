@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Integration check: verify that every registry entry resolves to a real
-# template pack with at least one published release.
+# template pack with at least one published release, and that the CLI
+# can resolve the full registry through its own resolution path.
 #
-# Requires: curl, grep, awk
+# Requires: curl, yq (https://github.com/mikefarah/yq)
 # Optional: GITHUB_TOKEN (raises API rate limit from 60 to 5000 req/h)
+#           GALAXIO_BIN   (path to galaxio binary for CLI resolution check)
 set -euo pipefail
 
 registry_file="${1:-galaxio-registry.yaml}"
@@ -30,20 +32,17 @@ curl_gh() {
 failures=0
 checked=0
 
-# Parse pack entries from registry YAML.
-# Paste name and source lines side-by-side, tab-separated.
-pack_entries=$(
-  paste \
-    <(grep '^\s*- name:' "$registry_file" | awk '{print $3}') \
-    <(grep '^\s*source:' "$registry_file" | awk '{print $2}')
-)
+# ── Parse registry YAML structurally via yq ──────────────────────────
+pack_count=$(yq '.packs | length' "$registry_file")
 
-if [[ -z "$pack_entries" ]]; then
+if [[ "$pack_count" -eq 0 ]]; then
   echo "No packs found in $registry_file" >&2
   exit 1
 fi
 
-while IFS=$'\t' read -r pack_name pack_source; do
+for (( i=0; i<pack_count; i++ )); do
+  pack_name=$(yq ".packs[$i].name" "$registry_file")
+  pack_source=$(yq ".packs[$i].source" "$registry_file")
   checked=$((checked + 1))
 
   echo "--- Checking pack: $pack_name (source: $pack_source)"
@@ -72,20 +71,21 @@ while IFS=$'\t' read -r pack_name pack_source; do
 
   # 2. Verify galaxio-pack.yaml is accessible on the ref
   pack_url="https://raw.githubusercontent.com/${repo}/${ref}/galaxio-pack.yaml"
-  pack_yaml=$(curl -sf "$pack_url" 2>/dev/null) || true
-  if [[ -z "$pack_yaml" ]]; then
+  pack_yaml_file=$(mktemp)
+  trap 'rm -f "$pack_yaml_file"' EXIT
+  if ! curl -sf "$pack_url" -o "$pack_yaml_file" 2>/dev/null || [[ ! -s "$pack_yaml_file" ]]; then
     echo "  FAIL: galaxio-pack.yaml not found at ${repo}@${ref}"
     failures=$((failures + 1))
     continue
   fi
   echo "  OK: galaxio-pack.yaml found at ${repo}@${ref}"
 
-  # 3. Validate pack manifest structure (basic checks via grep)
-  pack_api_version=$(echo "$pack_yaml" | grep '^apiVersion:' | awk '{print $2}')
-  pack_kind=$(echo "$pack_yaml" | grep '^kind:' | awk '{print $2}')
-  pack_manifest_name=$(echo "$pack_yaml" | grep '^name:' | head -1 | awk '{print $2}')
-  pack_version=$(echo "$pack_yaml" | grep '^version:' | head -1 | awk '{print $2}')
-  template_count=$(echo "$pack_yaml" | grep -c '^\s*- name:' || true)
+  # 3. Validate pack manifest structure via yq
+  pack_api_version=$(yq '.apiVersion' "$pack_yaml_file")
+  pack_kind=$(yq '.kind' "$pack_yaml_file")
+  pack_manifest_name=$(yq '.name' "$pack_yaml_file")
+  pack_version=$(yq '.version // ""' "$pack_yaml_file")
+  template_count=$(yq '.templates | length' "$pack_yaml_file")
 
   manifest_ok=true
   if [[ "$pack_api_version" != "galaxio.io/v1" ]]; then
@@ -96,7 +96,7 @@ while IFS=$'\t' read -r pack_name pack_source; do
     echo "  FAIL: kind must be TemplatePack, got: $pack_kind"
     manifest_ok=false
   fi
-  if [[ -z "$pack_manifest_name" ]]; then
+  if [[ -z "$pack_manifest_name" || "$pack_manifest_name" == "null" ]]; then
     echo "  FAIL: pack name is required"
     manifest_ok=false
   fi
@@ -111,7 +111,9 @@ while IFS=$'\t' read -r pack_name pack_source; do
   fi
   echo "  OK: pack manifest valid (version: ${pack_version:-none}, templates: ${template_count})"
 
-  # 4. If pack has a version, verify the corresponding release tag exists
+  # 4. If pack has a version, verify the corresponding release tag exists.
+  #    A declared version without a resolvable tag is a hard failure —
+  #    the CLI will not be able to download the pack archive.
   if [[ -n "$pack_version" ]]; then
     tag="v${pack_version}"
     if curl_gh "https://api.github.com/repos/${repo}/releases/tags/${tag}" > /dev/null 2>&1; then
@@ -119,13 +121,14 @@ while IFS=$'\t' read -r pack_name pack_source; do
     elif curl_gh "https://api.github.com/repos/${repo}/git/ref/tags/${tag}" > /dev/null 2>&1; then
       echo "  OK: git tag ${tag} exists (no GitHub release, but tag is resolvable)"
     else
-      echo "  WARN: version ${pack_version} declared but tag ${tag} not found yet"
+      echo "  FAIL: version ${pack_version} declared but tag ${tag} not found — CLI cannot resolve this pack"
+      failures=$((failures + 1))
+      continue
     fi
   fi
 
   # 5. Verify the repo has at least one release (for download resolution)
   release_json=$(curl_gh "https://api.github.com/repos/${repo}/releases?per_page=1" 2>/dev/null) || release_json="[]"
-  # Check if response is a non-empty array
   if echo "$release_json" | grep -q '"tag_name"'; then
     echo "  OK: repository has published releases"
   else
@@ -133,7 +136,32 @@ while IFS=$'\t' read -r pack_name pack_source; do
   fi
 
   echo "  PASS: pack ${pack_name} resolves correctly"
-done <<< "$pack_entries"
+done
+
+# ── CLI resolution check ─────────────────────────────────────────────
+# Drive the real CLI resolution path to catch drift between the script
+# checks above and the actual galaxio template resolution logic.
+galaxio_bin="${GALAXIO_BIN:-$(command -v galaxio 2>/dev/null || true)}"
+
+if [[ -n "$galaxio_bin" ]]; then
+  echo ""
+  echo "--- CLI resolution check (via $galaxio_bin)"
+
+  registry_source="local:$(cd "$(dirname "$registry_file")" && pwd)"
+  cli_output=$("$galaxio_bin" template list --registry "$registry_source" --output json 2>&1) || true
+
+  if echo "$cli_output" | grep -q '"name"'; then
+    cli_template_count=$(echo "$cli_output" | grep -c '"name"' || true)
+    echo "  OK: galaxio template list resolved ${cli_template_count} template(s)"
+  else
+    echo "  FAIL: galaxio template list failed to resolve registry"
+    echo "  Output: $cli_output"
+    failures=$((failures + 1))
+  fi
+else
+  echo ""
+  echo "--- CLI resolution check: SKIPPED (galaxio binary not found; set GALAXIO_BIN to enable)"
+fi
 
 echo ""
 echo "Checked ${checked} pack(s): $((checked - failures)) passed, ${failures} failed."
