@@ -12,11 +12,19 @@ The root manifest is [`galaxio-registry.yaml`](galaxio-registry.yaml).
 ```yaml
 apiVersion: galaxio.io/v1
 kind: TemplateRegistry
+version: 1.0.0
 packs:
   - name: gatling
     source: github:galax-io/templates-gatling
     description: Gatling performance testing templates
 ```
+
+- `version` is this registry's own semantic version. The `release` workflow
+  bumps it automatically on every release, so it should not be edited by hand
+  in a pull request. A pull request that changes `galaxio-registry.yaml` must
+  still bump `version` itself — CI enforces a minor bump for a `feat` change
+  and a patch bump for a `fix` change (see
+  [`.github/scripts/check-registry-version-bump.sh`](.github/scripts/check-registry-version-bump.sh)).
 
 ## Packs
 
