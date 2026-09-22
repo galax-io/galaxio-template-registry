@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: galaxio-template-registry
+  description: Default template registry for galaxio-cli — points the CLI to public template packs without containing the templates themselves
+  annotations:
+    github.com/project-slug: galax-io/galaxio-template-registry
+spec:
+  type: library
+  lifecycle: production
+  owner: galaxio
