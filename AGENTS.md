@@ -8,16 +8,19 @@ Template registry for Galaxio CLI — versioned project templates and metadata
 
 ## Role
 
-TODO Role — e.g. Principal Engineer: <langs/frameworks>, <domain>
+Maintainer of the default template registry for `galaxio-cli`: a versioned manifest that points the CLI to public template packs. It holds no templates. Keep the manifest, its version bump and the resolution check in step.
 
 ## Stack
 
-TODO Stack detail — languages, build tool, runtime/target, key libraries, test frameworks
+YAML manifest (`galaxio-registry.yaml`), bash scripts under `.github/scripts/` checked with shellcheck and actionlint, GitHub Actions (`ci`, `release`); changelog by git-cliff (`cliff.toml`). No build, no runtime.
 
 ## Commands
 
 ```bash
-# TODO format / verify / build-test / integration commands
+# lint    shellcheck .github/scripts/*.sh
+# test    bash .github/scripts/check-registry-version-bump_test.sh
+# check   bash .github/scripts/check-registry-version-bump.sh      # needs the base ref, as in CI
+# resolve bash .github/scripts/check-registry-resolution.sh        # installs nothing; CI runs it with galaxio-cli
 ```
 
 ## Structure
@@ -25,15 +28,15 @@ TODO Stack detail — languages, build tool, runtime/target, key libraries, test
 <!-- A LIGHT search index, not a full tree. List only the entry points an agent needs
      to FIND code fast — one terse line per area (`dir/ -> what lives there`). Omit
      anything discoverable by looking; an exhaustive tree is noise and rots fast. -->
-TODO Structure — a light search index: only the few entry points an agent needs to locate code fast (e.g. `api/ -> HTTP handlers`, `core/ -> domain logic`). Keep it short; an exhaustive tree is noise.
+`galaxio-registry.yaml` -> the manifest (packs and their sources, own semantic `version`); `.github/scripts/` -> version-bump checker with its test, resolution check; `.github/workflows/ci.yml` -> lint, versioning, integration resolution check; `.github/workflows/release.yml` -> manual release; `CHANGELOG.md`, `cliff.toml` -> release notes.
 
 ## Architecture
 
-TODO Architecture — source-of-truth layer, facade/adapters, runtime-sensitive areas to review carefully
+The manifest maps a pack name to a GitHub repository (`source: github:owner/repo`); the CLI then reads `galaxio-pack.yaml` from that repository and resolves a pack version to the release tagged `v<version>`. A change to the manifest must bump its `version` itself (minor for `feat`, patch for `fix`); the release workflow bumps it again on release. See `README.md` for the resolution chain.
 
 ## Test Model
 
-TODO Test Model — authoritative test doc, test-first policy, layers that apply, coverage floor
+Tests are bash and run in CI: `check-registry-version-bump_test.sh` covers the bump rule with fixtures; the `integration resolution check` job installs `galaxio-cli` and resolves every pack in the manifest end to end. A manifest change is checked by that job, not by reading it.
 
 ---
 
@@ -43,7 +46,7 @@ TODO Test Model — authoritative test doc, test-first policy, layers that apply
 
 ## Boundaries
 
-**Always:** format before commit, branch from `main`, keep commits semantic and green, preserve backward compat for published public APIs and any downstream consumers. `TODO dependency manifest` = dependency truth, `.github/workflows/` = CI/release truth.
+**Always:** format before commit, branch from `main`, keep commits semantic and green, preserve backward compat for published public APIs and any downstream consumers. `galaxio-registry.yaml` = the registry's truth, `.github/workflows/` = CI/release truth.
 
 **Ask first:** new deps or upgrades, changing public API signatures / observable behavior / serialized formats, editing another repo, release/publish workflow changes.
 
@@ -72,7 +75,7 @@ A feature is an issue in `galax-io/galaxio-sdlc-backlog`. It belongs to exactly 
 ## Commits & PRs
 
 - **Spec-first.** `specs/NNN-*/` artifacts → `docs(speckit): add NNN-<feature> spec/plan/tasks` commit BEFORE any `feat`/`fix`. Never folded into implementation.
-- **1 issue = 1 commit.** Each tracked GitHub issue maps to one semantic commit (`feat(scope): … (#NNN)`), green on its own (`TODO build+test cmd`). Docs, tweaks, and out-of-scope improvements go in separate PRs — never mixed with issue commits.
+- **1 issue = 1 commit.** Each tracked GitHub issue maps to one semantic commit (`feat(scope): … (#NNN)`), green on its own (`shellcheck .github/scripts/*.sh` and the test above). Docs, tweaks, and out-of-scope improvements go in separate PRs — never mixed with issue commits.
 - **Intent, not path.** No add-then-remove within a PR. Squash churn before review.
 - **1 concern per PR.** Feature ≠ docs/README. Stack dependent PRs; update with `--force-with-lease`.
 - **Idiomatic code.** Follow the language's idioms and the conventions already in the codebase; no control-flow-by-exception, no dead/duplicated code.
@@ -110,30 +113,12 @@ Route work by the reasoning it needs, not by habit; parallelize only where agent
 
 ## Release Process (MANDATORY)
 
-Trunk-based with release branches. Trunk is `main`; `release/*` branches are cut from `main` for stabilization. Pushing a `vX.Y.Z` tag on `main` or a `release/*` branch triggers the release workflow (TODO publish mechanism) and creates a GitHub Release (git-cliff).
-
-### Minor/Major release (e.g. 1.2.0, 2.0.0)
-
-1. `git checkout -b release/X.Y.0 main` — cut release branch from `main`
-2. `git push -u origin release/X.Y.0`
-3. `git tag vX.Y.0` on the release branch
-4. `git push origin vX.Y.0` — triggers release workflow
-
-### Patch release (e.g. 1.2.1)
-
-1. Fix lands on `main` first (via PR as usual)
-2. `git cherry-pick <fix-sha>` onto `release/X.Y.0`
-3. `git tag vX.Y.1` on the release branch
-4. `git push origin vX.Y.1` — triggers release workflow
+A release is the manual `release` workflow (`workflow_dispatch`, input `version`, for example `1.1.0`). It validates the version, checks the tag does not exist, bumps `version` in `galaxio-registry.yaml`, updates `CHANGELOG.md` with git-cliff, creates and pushes the tag `v<version>` and creates the GitHub Release. Do not tag or bump by hand, and do not create `release/*` branches: the registry is consumed from `main` by `galaxio-cli`.
 
 ### Rules
 
-- **Every minor version gets its own `release/X.Y.0` branch** — no exceptions
-- **Tags ONLY on `release/*` branches or `main`** — `release.yml` validates this
-- **Branch name must match tag version**: `release/1.2.0` → `v1.2.0`, `v1.2.1`, etc.
-- **Never delete a release tag** after the registry deployment starts — creates stuck deployments
-- **Never reuse a version number** — most package registries reject duplicates permanently
-- **Before tagging**: every PR merged since the previous tag must be assigned to the milestone; every issue in the milestone whose fix is on `main` must be closed
+- **Never delete a release tag** and **never reuse a version number**: packs and the CLI resolve against them.
+- **Before releasing**: every PR merged since the previous tag is assigned to the milestone and every issue in it whose fix is on `main` is closed (`scripts/check-linkage.sh --for-tag vX.Y.Z`).
 
 <!-- The issue↔PR↔milestone contract above is enforced mechanically by         -->
 <!-- scripts/check-linkage.sh, run from two places:                             -->
