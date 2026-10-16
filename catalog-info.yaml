@@ -5,9 +5,12 @@ metadata:
   description: Default template registry for galaxio-cli — points the CLI to public template packs without containing the templates themselves
   annotations:
     github.com/project-slug: galax-io/galaxio-template-registry
+    galaxio.io/uses.templates-gatling: "template: lists the gatling pack and its source"
+    galaxio.io/uses.spec-kit-galaxio-bootstrap: "process: created from the template, takes process updates via copier update"
 spec:
   type: library
   lifecycle: production
   owner: galaxio
   dependsOn:
     - component:default/templates-gatling
+    - component:default/spec-kit-galaxio-bootstrap
