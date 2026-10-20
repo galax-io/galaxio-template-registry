@@ -10,6 +10,8 @@ Template registry for Galaxio CLI — versioned project templates and metadata
 
 Maintainer of the default template registry for `galaxio-cli`: a versioned manifest that points the CLI to public template packs. It holds no templates. Keep the manifest, its version bump and the resolution check in step.
 
+**Constitution:** the principles of this repository are in `.specify/memory/constitution.md`; where they conflict with this file, the constitution wins.
+
 ## Stack
 
 YAML manifest (`galaxio-registry.yaml`), bash scripts under `.github/scripts/` checked with shellcheck and actionlint, GitHub Actions (`ci`, `release`); changelog by git-cliff (`cliff.toml`). No build, no runtime.
