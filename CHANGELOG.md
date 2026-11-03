@@ -2,9 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.3] - 2026-11-03
+
+### Documentation
+- Repository work goes in a theme milestone, the version is a tag (#29) ([91f73ee](https://github.com/galax-io/galaxio-template-registry/commit/91f73ee0d8533bedd2cbed7b5f142485cfd92175))
 ## [1.0.2] - 2026-10-27
 
 ### Maintenance
+- Bump version to v1.0.2 ([185f0bc](https://github.com/galax-io/galaxio-template-registry/commit/185f0bce562ecb3dfea3003c3455471ff1939d51))
 - Take scripts/check-linkage.sh of spec-kit-galaxio-bootstrap v0.12.1 by hand (#28) ([ae9ba77](https://github.com/galax-io/galaxio-template-registry/commit/ae9ba77eece4ae463f532b262961a0c8f215a1a4))
 - Take spec-kit-galaxio-bootstrap v0.12.0 by hand (#27) ([7dc1a76](https://github.com/galax-io/galaxio-template-registry/commit/7dc1a766e30833c0fb8e317bf2db31019b2e555a))
 - A technical PR agreed with the maintainer skips the feature with a "No feature:" line (#26) ([3890888](https://github.com/galax-io/galaxio-template-registry/commit/389088839858585d18830dee5327f62e7dbe1622))
